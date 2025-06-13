@@ -1,0 +1,26 @@
+{
+  "name": "ig2i-bi",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node db-filler.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Hugz12/IG2I-BI.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Hugz12/IG2I-BI/issues"
+  },
+  "homepage": "https://github.com/Hugz12/IG2I-BI#readme",
+  "description": "",
+  "dependencies": {
+    "@faker-js/faker": "^9.8.0",
+    "dotenv": "^16.5.0",
+    "faker": "^6.6.6",
+    "mysql2": "^3.14.1"
+  }
+}
