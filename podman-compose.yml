@@ -1,0 +1,14 @@
+services:
+  api-db:
+    image: docker.io/library/mysql:latest
+    container_name: api-db
+    environment:
+      MYSQL_ROOT_PASSWORD: motdepasse
+      MYSQL_DATABASE: money
+      MYSQL_USER: IG2I
+      MYSQL_PASSWORD: motdepasse
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./db_data:/var/lib/mysql
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
