@@ -7,8 +7,22 @@ services:
       MYSQL_DATABASE: money
       MYSQL_USER: IG2I
       MYSQL_PASSWORD: motdepasse
-    ports:
-      - "3306:3306"
+    expose:
+      - "3306"
     volumes:
       - ./db_data:/var/lib/mysql
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+
+  data-db:
+    image: docker.io/library/mysql:latest
+    container_name: data-db
+    environment:
+      MYSQL_ROOT_PASSWORD: motdepasse
+      MYSQL_DATABASE: money
+      MYSQL_USER: IG2I
+      MYSQL_PASSWORD: motdepasse
+    expose:
+      - "3306"
+    volumes:
+      - ./db_files:/var/lib/mysql
+      - ./init-db-data.sql:/docker-entrypoint-initdb.d/init-db.sql
