@@ -11,7 +11,6 @@ DATABASE_USER=IG2I
 DATABASE_PASSWORD=motdepasse
 DATABASE_NAME=money
 DATABASE_PORT=3306
-JWT_TOKEN=key
 ```
 
 Executer ces commandes :
