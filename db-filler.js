@@ -1,6 +1,14 @@
 require('dotenv').config();
 const mysql = require('mysql2/promise');
 const { faker } = require('@faker-js/faker');
+const { randomBytes, scryptSync } = require('crypto');
+
+// Generate a secure hash for passwords
+function hashPassword(password) {
+    const salt = randomBytes(16).toString("hex"); // Sel aléatoire
+    const hash = scryptSync(password, salt, 64).toString("hex");
+    return `${salt}:${hash}`;
+}
 
 // Database configuration
 const dbConfig = {
@@ -46,6 +54,15 @@ const categoriesData = [
         subcategories: ['Vêtements', 'Électronique', 'Maison', 'Cadeaux', 'Beauté']
     }
 ];
+
+const technicalUser = {
+    nomUtilisateur: "Laloy",
+    prenomUtilisateur: "Hugo",
+    login: "hugo.laloy@mail.com",
+    mdp: hashPassword("password123"),
+    ville: "Lens",
+    codePostal: "62300",
+}
 
 // French bank names
 const bankNames = [
@@ -96,15 +113,16 @@ class BankDataGenerator {
         console.log(`🔄 Generating ${count} users...`);
         const users = [];
 
+        users.push(technicalUser);
+
         for (let i = 0; i < count; i++) {
             const firstName = faker.person.firstName();
             const lastName = faker.person.lastName();
             const user = {
                 nomUtilisateur: lastName,
                 prenomUtilisateur: firstName,
-                login: faker.internet.username({ firstName, lastName }).toLowerCase(),
-                mdp: faker.internet.password(),
-                hashcode: faker.string.alphanumeric(32),
+                login: faker.internet.email({ firstName, lastName }),
+                mdp: hashPassword(faker.internet.password()),
                 ville: faker.location.city(),
                 codePostal: faker.location.zipCode('####0')
             };

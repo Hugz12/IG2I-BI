@@ -58,7 +58,7 @@ CREATE TABLE Utilisateur
     prenomUtilisateur VARCHAR(50) NOT NULL,
     login             VARCHAR(50) NOT NULL,
     mdp               VARCHAR(256) NULL,
-    hashcode          VARCHAR(128) NULL,
+    hashcode          VARCHAR(256) NULL,
     dateHeureCreation TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     dateHeureMAJ      TIMESTAMP DEFAULT CURRENT_TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP,
     ville             VARCHAR(50) NULL,
@@ -73,8 +73,8 @@ CREATE TABLE Compte
     idUtilisateur     INT NOT NULL,
     dateHeureCreation TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     dateHeureMAJ      TIMESTAMP DEFAULT CURRENT_TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP,
-    soldeInitial      DECIMAL(8, 2) DEFAULT 0.00 NOT NULL,
-    dernierSolde      DECIMAL(8, 2) DEFAULT 0.00 NOT NULL,
+    soldeInitial      DECIMAL(12, 2) DEFAULT 0.00 NOT NULL,
+    dernierSolde      DECIMAL(12, 2) DEFAULT 0.00 NOT NULL,
     CONSTRAINT Compte_Utilisateur_idUtilisateur_fk
         FOREIGN KEY (idUtilisateur) REFERENCES Utilisateur (idUtilisateur)
             ON DELETE CASCADE
@@ -126,7 +126,7 @@ CREATE TABLE Virement
     idVirement        INT AUTO_INCREMENT PRIMARY KEY,
     idCompteDebit     INT NOT NULL,
     idCompteCredit    INT NOT NULL,
-    montant           DECIMAL(8, 2) DEFAULT 0.00 NOT NULL,
+    montant           DECIMAL(12, 2) DEFAULT 0.00 NOT NULL,
     dateVirement      DATE DEFAULT (CURDATE()) NOT NULL,
     dateHeureCreation TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     dateHeureMAJ      TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL ON UPDATE CURRENT_TIMESTAMP,
@@ -147,7 +147,7 @@ CREATE TABLE Mouvement
     idCategorie       INT DEFAULT 1 NULL,
     idSousCategorie   INT NULL,
     idVirement        INT NULL,
-    montant           DECIMAL(8, 2) NULL,
+    montant           DECIMAL(12, 2) NULL,
     typeMouvement     CHAR(1) DEFAULT 'D' NULL,
     dateHeureCreation TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     dateHeureMAJ      TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL ON UPDATE CURRENT_TIMESTAMP,
@@ -251,7 +251,7 @@ CREATE TRIGGER TRG_AFTER_INSERT_MOUVEMENT
     ON Mouvement
     FOR EACH ROW
 BEGIN
-    DECLARE v_solde DECIMAL(8, 2);
+    DECLARE v_solde DECIMAL(12, 2);
     
     /* Mettre à jour le solde du compte concerné */
     SELECT dernierSolde INTO v_solde FROM Compte WHERE idCompte = NEW.idCompte;
@@ -272,7 +272,7 @@ CREATE TRIGGER TRG_AFTER_UPDATE_MOUVEMENT
     ON Mouvement
     FOR EACH ROW
 BEGIN
-    DECLARE v_solde DECIMAL(8, 2);
+    DECLARE v_solde DECIMAL(12, 2);
     
     /* Mettre à jour le solde du compte concerné */
     SELECT dernierSolde INTO v_solde FROM Compte WHERE idCompte = NEW.idCompte;
@@ -298,7 +298,7 @@ CREATE TRIGGER TRG_AFTER_DELETE_MOUVEMENT
     ON Mouvement
     FOR EACH ROW
 BEGIN
-    DECLARE v_solde DECIMAL(8, 2);
+    DECLARE v_solde DECIMAL(12, 2);
     
     /* Mettre à jour le solde du compte concerné */
     SELECT dernierSolde INTO v_solde FROM Compte WHERE idCompte = OLD.idCompte;
