@@ -203,7 +203,7 @@ BEGIN
     /* un mouvement au débit sur le compte débité */
     /* Un mouvement au crédit sur le compte crédité */
     INSERT INTO Mouvement(idCompte,montant,typeMouvement,idVirement,dateMouvement) 
-    VALUES (NEW.idCompteDebit,(NEW.montant * -1),'D',NEW.idVirement,NEW.dateVirement);
+    VALUES (NEW.idCompteDebit,(NEW.montant),'D',NEW.idVirement,NEW.dateVirement);
     
     INSERT INTO Mouvement(idCompte,montant,typeMouvement,idVirement,dateMouvement) 
     VALUES (NEW.idCompteCredit,NEW.montant, 'C',NEW.idVirement,NEW.dateVirement);
