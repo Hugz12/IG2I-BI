@@ -20,6 +20,11 @@ npm install
 npm run start
 ```
 
-Table faitsoldecompte
+Done Table faitsoldecompte
 1 ligne par jour (même si aucun mouvement)
 -> Date du premier mouvement jusqu'à aujourd'hui
+
+FaitSoldeCompte
+-> Récupérer le solde initial et créer une ligne à la date de création du compte
+-> A partir de cette date il faut créer une ligne par jour qui possedera le même solde, jusqu'à ce qu'il y ait un mouvement où on mettre à jour le solde qui restera le même dans les jour suivants 
+/!\ Multiples mouvements le même jour
