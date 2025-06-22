@@ -19,3 +19,7 @@ podman-compose up -d
 npm install
 npm run start
 ```
+
+Table faitsoldecompte
+1 ligne par jour (même si aucun mouvement)
+-> Date du premier mouvement jusqu'à aujourd'hui
