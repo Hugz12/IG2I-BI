@@ -70,64 +70,71 @@ class ETL {
     }
   }
 
-  // Extract and transform time dimension
   async processDimTemps() {
     console.log("🔄 Processing time dimension...");
 
     try {
-      // Fetch the earliest date from the source data
+      // Fetch the earliest date from all the data
       const [dates] = await this.sourceConnection.query(`
-                SELECT dateMouvement as date 
-                FROM Mouvement 
-                ORDER BY dateMouvement
-                LIMIT 1
+                SELECT MIN(earliest_date) AS date
+                FROM (
+                    SELECT dateMouvement AS earliest_date
+                    FROM Mouvement
+                    
+                    UNION ALL
+                    
+                    SELECT DATE(dateHeureCreation) AS earliest_date
+                    FROM Compte
+                ) AS all_dates;
             `);
 
+      console.log(dates);
       const oldestDate = dates.length > 0 ? dates[0].date : null;
       console.log(`Oldest date found: ${oldestDate}`);
 
       if (oldestDate) {
         await this.targetConnection.query(
           `
-                    INSERT INTO DimTemps (idTemps, date, jour, mois, trimestre, annee, jourSemaine)
-                    WITH RECURSIVE all_dates AS (
-                        SELECT DATE(?) AS full_date
-                        UNION ALL
-                        SELECT full_date + INTERVAL 1 DAY
-                        FROM all_dates
-                        WHERE full_date + INTERVAL 1 DAY <= ?
-                    )
-                    SELECT
-                        DATE_FORMAT(full_date, '%Y%m%d') AS idTemps,
-                        full_date AS date,
-                        DAY(full_date) AS jour,
-                        MONTH(full_date) AS mois,
-                        QUARTER(full_date) AS trimestre,
-                        YEAR(full_date) AS annee,
-                        CASE DAYOFWEEK(full_date)
-                            WHEN 1 THEN 'Dimanche'
-                            WHEN 2 THEN 'Lundi'
-                            WHEN 3 THEN 'Mardi'
-                            WHEN 4 THEN 'Mercredi'
-                            WHEN 5 THEN 'Jeudi'
-                            WHEN 6 THEN 'Vendredi'
-                            WHEN 7 THEN 'Samedi'
-                        END AS jourSemaine
-                    FROM all_dates;
-                    `,
+              INSERT IGNORE INTO DimTemps (idTemps, date, jour, mois, trimestre, annee, jourSemaine)
+              WITH RECURSIVE all_dates AS (
+            SELECT DATE(?) AS full_date
+            UNION ALL
+            SELECT full_date + INTERVAL 1 DAY
+            FROM all_dates
+            WHERE full_date + INTERVAL 1 DAY <= ?
+              )
+              SELECT
+            DATE_FORMAT(full_date, '%Y%m%d') AS idTemps,
+            full_date AS date,
+            DAY(full_date) AS jour,
+            MONTH(full_date) AS mois,
+            QUARTER(full_date) AS trimestre,
+            YEAR(full_date) AS annee,
+            CASE DAYOFWEEK(full_date)
+                WHEN 1 THEN 'Dimanche'
+                WHEN 2 THEN 'Lundi'
+                WHEN 3 THEN 'Mardi'
+                WHEN 4 THEN 'Mercredi'
+                WHEN 5 THEN 'Jeudi'
+                WHEN 6 THEN 'Vendredi'
+                WHEN 7 THEN 'Samedi'
+            END AS jourSemaine
+              FROM all_dates;
+              `,
           [oldestDate, new Date()]
         );
       }
 
       this.stats.processed.dates = this.daysBetweenInclusive(oldestDate);
-      console.log(`✅ Processed ${this.stats.processed.dates} time dimension records`);
+      console.log(
+        `✅ Processed ${this.stats.processed.dates} time dimension records`
+      );
     } catch (error) {
       console.error("❌ Error processing time dimension:", error);
       this.stats.errors.push(`DimTemps: ${error.message}`);
     }
   }
 
-  // Extract and transform account dimension
   async processDimCompte() {
     console.log("🔄 Processing account dimension...");
 
@@ -148,12 +155,8 @@ class ETL {
 
         await this.targetConnection.query(
           `
-                    INSERT INTO DimCompte (idCompte, description, nomBanque, idUtilisateur)
+                    INSERT IGNORE INTO DimCompte (idCompte, description, nomBanque, idUtilisateur)
                     VALUES ?
-                    ON DUPLICATE KEY UPDATE
-                        description = VALUES(description),
-                        nomBanque = VALUES(nomBanque),
-                        nomUtilisateur = VALUES(nomUtilisateur)
                 `,
           [dimCompteData]
         );
@@ -282,11 +285,8 @@ class ETL {
 
       await this.targetConnection.query(
         `
-                INSERT INTO DimTypeMouvement (idTypeMouvement, code, libelle)
+                INSERT IGNORE INTO DimTypeMouvement (idTypeMouvement, code, libelle)
                 VALUES ?
-                ON DUPLICATE KEY UPDATE 
-                    code = VALUES(code),
-                    libelle = VALUES(libelle)
             `,
         [movementTypes]
       );
@@ -301,6 +301,158 @@ class ETL {
     }
   }
 
+  async processFaits() {
+    console.log("🔄 Processing movement type dimension...");
+
+    try {
+      const [accountSetup] = await this.sourceConnection.query(`
+          SELECT m.idCompte, MIN(m.dateMouvement) AS firstdate, c.soldeInitial
+          FROM Mouvement AS m
+          JOIN Compte AS c
+          ON m.idCompte = c.idCompte
+          GROUP BY c.idCompte
+      `);
+
+      await this.targetConnection.query(
+        `
+          INSERT INTO FaitSoldeCompte (idTemps, idCompte, montantSolde) VALUES ?
+          `,
+        [
+          accountSetup.map((datas) => {
+            const date = new Date(datas.firstdate);
+            const idTemps =
+              date.getFullYear().toString() +
+              String(date.getMonth() + 1).padStart(2, "0") +
+              String(date.getDate()).padStart(2, "0");
+            return [idTemps, datas.idCompte, datas.soldeInitial];
+          }),
+        ]
+      );
+
+      // Alimente FaitMouvement
+      const [movements] = await this.sourceConnection.query(`
+          SELECT m.idMouvement, m.idCompte, m.dateMouvement, m
+          .montant, m.idTiers, m.idSousCategorie, m.typeMouvement
+          FROM Mouvement AS m
+          JOIN Compte AS c ON m.idCompte = c.idCompte
+      `);
+
+      if (movements.length > 0) {
+        await this.targetConnection.query(
+          `
+            INSERT INTO FaitMouvement (idMouvement, idTemps, idCompte, montant, idTiers, idSousCategorie, idTypeMouvement)
+            VALUES ?
+          `,
+          [
+            movements.map((movement) => {
+              const date = new Date(movement.dateMouvement);
+              const idTemps =
+                date.getFullYear().toString() +
+                String(date.getMonth() + 1).padStart(2, "0") +
+                String(date.getDate()).padStart(2, "0");
+              
+              // Convert C/D to 1/2
+              const idTypeMouvement = movement.typeMouvement === "C" ? 1 : 2;
+              
+              return [
+                movement.idMouvement,
+                idTemps,
+                movement.idCompte,
+                movement.montant,
+                movement.idTiers,
+                movement.idSousCategorie,
+                idTypeMouvement,
+              ];
+            }),
+          ]
+        );
+      }
+
+      // Drop procedure if it exists first
+      await this.targetConnection.query(`DROP PROCEDURE IF EXISTS calculer_soldes_journaliers`);
+      
+      // /!\ This may take a while
+      await this.targetConnection.query(`
+        CREATE PROCEDURE calculer_soldes_journaliers()
+        BEGIN
+            DECLARE done INT DEFAULT 0;
+            DECLARE id_compte INT;
+            DECLARE date_courante DATE;
+            DECLARE date_creation DATE;
+            DECLARE solde_prec DECIMAL(15,2);
+            DECLARE mouvements_jour DECIMAL(15,2);
+            DECLARE id_temps_courant INT;
+            DECLARE id_temps_prec INT;
+
+            DECLARE curseur_comptes CURSOR FOR
+                SELECT idCompte FROM DimCompte;
+
+            DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = 1;
+
+            OPEN curseur_comptes;
+
+            comptes_loop: LOOP
+                FETCH curseur_comptes INTO id_compte;
+                IF done THEN
+                    LEAVE comptes_loop;
+                END IF;
+
+                -- Obtenir la date de création du compte
+                SELECT t.date INTO date_creation
+                FROM DimTemps t
+                JOIN FaitSoldeCompte f ON f.idTemps = t.idTemps
+                WHERE f.idCompte = id_compte
+                ORDER BY t.date ASC
+                LIMIT 1;
+
+                -- Boucle sur les dates après la création
+                SET date_courante = DATE_ADD(date_creation, INTERVAL 1 DAY);
+                WHILE EXISTS (SELECT 1 FROM DimTemps WHERE date = date_courante) DO
+
+                    -- Obtenir les idTemps
+                    SELECT idTemps INTO id_temps_courant FROM DimTemps WHERE date = date_courante;
+                    SELECT idTemps INTO id_temps_prec FROM DimTemps WHERE date = DATE_SUB(date_courante, INTERVAL 1 DAY);
+
+                    -- Récupérer le solde de la veille
+                    SELECT montantSolde INTO solde_prec
+                    FROM FaitSoldeCompte
+                    WHERE idCompte = id_compte AND idTemps = id_temps_prec;
+
+                    -- Calcul des mouvements du jour avec le signe selon DimTypeMouvement
+                    SELECT IFNULL(SUM(
+                        CASE 
+                            WHEN dtm.code = 'C' THEN fm.montant  -- Crédit (positif)
+                            WHEN dtm.code = 'D' THEN -fm.montant -- Débit (négatif)
+                            ELSE 0
+                        END
+                    ), 0)
+                    INTO mouvements_jour
+                    FROM FaitMouvement fm
+                    JOIN DimTypeMouvement dtm ON fm.idTypeMouvement = dtm.idTypeMouvement
+                    WHERE fm.idCompte = id_compte AND fm.idTemps = id_temps_courant;
+
+                    -- Insertion du solde du jour
+                    INSERT INTO FaitSoldeCompte(idTemps, idCompte, montantSolde)
+                    VALUES (id_temps_courant, id_compte, solde_prec + mouvements_jour);
+
+                    SET date_courante = DATE_ADD(date_courante, INTERVAL 1 DAY);
+                END WHILE;
+            END LOOP;
+
+            CLOSE curseur_comptes;
+        END
+      `);
+
+      // Call the stored procedure (optional)
+      await this.targetConnection.query(`CALL calculer_soldes_journaliers()`);
+
+      console.log("✅ Processed facts and created stored procedure");
+
+    } catch (error) {
+      console.error("❌ Error processing facts:", error);
+      this.stats.errors.push(`FaitMouvement: ${error.message}`);
+    }
+  }
   // Utility functions
   getDayOfWeek(dayNum) {
     const days = [
@@ -368,7 +520,7 @@ class ETL {
 
       // Process facts
       // await this.processFaitMouvement();
-      // await this.processFaitSoldeCompte();
+      await this.processFaits();
 
       const endTime = Date.now();
       const duration = (endTime - startTime) / 1000;

@@ -58,7 +58,7 @@ CREATE TABLE FaitMouvement (
 );
 
 CREATE TABLE FaitSoldeCompte (
-    idSolde INT PRIMARY KEY,
+    idSolde INT PRIMARY KEY AUTO_INCREMENT,
     idTemps INT NOT NULL,
     idCompte INT NOT NULL,
     montantSolde DECIMAL(15,2) NOT NULL,
