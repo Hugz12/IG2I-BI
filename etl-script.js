@@ -1,5 +1,8 @@
 require("dotenv").config();
 const mysql = require("mysql2/promise");
+// Import ora as ESM module requiring dynamic import
+const oraImport = require("ora");
+const ora = oraImport.default || oraImport; // Handle both ESM and CJS scenarios
 
 // Database configurations
 const sourceDbConfig = {
@@ -88,9 +91,7 @@ class ETL {
                 ) AS all_dates;
             `);
 
-      console.log(dates);
       const oldestDate = dates.length > 0 ? dates[0].date : null;
-      console.log(`Oldest date found: ${oldestDate}`);
 
       if (oldestDate) {
         await this.targetConnection.query(
@@ -127,7 +128,7 @@ class ETL {
 
       this.stats.processed.dates = this.daysBetweenInclusive(oldestDate);
       console.log(
-        `✅ Processed ${this.stats.processed.dates} time dimension records`
+        `✅ Processed ${this.stats.processed.dates} time dimension records\n`
       );
     } catch (error) {
       console.error("❌ Error processing time dimension:", error);
@@ -163,7 +164,9 @@ class ETL {
       }
 
       this.stats.processed.accounts = accounts.length;
-      console.log(`✅ Processed ${accounts.length} account dimension records`);
+      console.log(
+        `✅ Processed ${accounts.length} account dimension records\n`
+      );
     } catch (error) {
       console.error("❌ Error processing account dimension:", error);
       this.stats.errors.push(`DimCompte: ${error.message}`);
@@ -203,7 +206,9 @@ class ETL {
       }
 
       this.stats.processed.tiers = tiers.length;
-      console.log(`✅ Processed ${tiers.length} third party dimension records`);
+      console.log(
+        `✅ Processed ${tiers.length} third party dimension records\n`
+      );
     } catch (error) {
       console.error("❌ Error processing third party dimension:", error);
       this.stats.errors.push(`DimTiers: ${error.message}`);
@@ -265,7 +270,7 @@ class ETL {
       this.stats.processed.categories = categories.length;
       this.stats.processed.subcategories = subcategories.length;
       console.log(
-        `✅ Processed ${categories.length} categories and ${subcategories.length} subcategories`
+        `✅ Processed ${categories.length} categories and ${subcategories.length} subcategories\n`
       );
     } catch (error) {
       console.error("❌ Error processing category dimensions:", error);
@@ -293,7 +298,7 @@ class ETL {
 
       this.stats.processed.movementTypes = movementTypes.length;
       console.log(
-        `✅ Processed ${movementTypes.length} movement type dimension records`
+        `✅ Processed ${movementTypes.length} movement type dimension records\n`
       );
     } catch (error) {
       console.error("❌ Error processing movement type dimension:", error);
@@ -301,8 +306,8 @@ class ETL {
     }
   }
 
-  async processFaits() {
-    console.log("🔄 Processing movement type dimension...");
+  async processMouvementsFaits() {
+    console.log("🔄 Processing movements facts table...");
 
     try {
       const [accountSetup] = await this.sourceConnection.query(`
@@ -315,7 +320,7 @@ class ETL {
 
       await this.targetConnection.query(
         `
-          INSERT INTO FaitSoldeCompte (idTemps, idCompte, montantSolde) VALUES ?
+          INSERT IGNORE INTO FaitSoldeCompte (idTemps, idCompte, montantSolde) VALUES ?
           `,
         [
           accountSetup.map((datas) => {
@@ -340,7 +345,7 @@ class ETL {
       if (movements.length > 0) {
         await this.targetConnection.query(
           `
-            INSERT INTO FaitMouvement (idMouvement, idTemps, idCompte, montant, idTiers, idSousCategorie, idTypeMouvement)
+            INSERT IGNORE INTO FaitMouvement (idMouvement, idTemps, idCompte, montant, idTiers, idSousCategorie, idTypeMouvement)
             VALUES ?
           `,
           [
@@ -350,10 +355,9 @@ class ETL {
                 date.getFullYear().toString() +
                 String(date.getMonth() + 1).padStart(2, "0") +
                 String(date.getDate()).padStart(2, "0");
-              
-              // Convert C/D to 1/2
+
               const idTypeMouvement = movement.typeMouvement === "C" ? 1 : 2;
-              
+
               return [
                 movement.idMouvement,
                 idTemps,
@@ -368,91 +372,39 @@ class ETL {
         );
       }
 
-      // Drop procedure if it exists first
-      await this.targetConnection.query(`DROP PROCEDURE IF EXISTS calculer_soldes_journaliers`);
-      
-      // /!\ This may take a while
-      await this.targetConnection.query(`
-        CREATE PROCEDURE calculer_soldes_journaliers()
-        BEGIN
-            DECLARE done INT DEFAULT 0;
-            DECLARE id_compte INT;
-            DECLARE date_courante DATE;
-            DECLARE date_creation DATE;
-            DECLARE solde_prec DECIMAL(15,2);
-            DECLARE mouvements_jour DECIMAL(15,2);
-            DECLARE id_temps_courant INT;
-            DECLARE id_temps_prec INT;
-
-            DECLARE curseur_comptes CURSOR FOR
-                SELECT idCompte FROM DimCompte;
-
-            DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = 1;
-
-            OPEN curseur_comptes;
-
-            comptes_loop: LOOP
-                FETCH curseur_comptes INTO id_compte;
-                IF done THEN
-                    LEAVE comptes_loop;
-                END IF;
-
-                -- Obtenir la date de création du compte
-                SELECT t.date INTO date_creation
-                FROM DimTemps t
-                JOIN FaitSoldeCompte f ON f.idTemps = t.idTemps
-                WHERE f.idCompte = id_compte
-                ORDER BY t.date ASC
-                LIMIT 1;
-
-                -- Boucle sur les dates après la création
-                SET date_courante = DATE_ADD(date_creation, INTERVAL 1 DAY);
-                WHILE EXISTS (SELECT 1 FROM DimTemps WHERE date = date_courante) DO
-
-                    -- Obtenir les idTemps
-                    SELECT idTemps INTO id_temps_courant FROM DimTemps WHERE date = date_courante;
-                    SELECT idTemps INTO id_temps_prec FROM DimTemps WHERE date = DATE_SUB(date_courante, INTERVAL 1 DAY);
-
-                    -- Récupérer le solde de la veille
-                    SELECT montantSolde INTO solde_prec
-                    FROM FaitSoldeCompte
-                    WHERE idCompte = id_compte AND idTemps = id_temps_prec;
-
-                    -- Calcul des mouvements du jour avec le signe selon DimTypeMouvement
-                    SELECT IFNULL(SUM(
-                        CASE 
-                            WHEN dtm.code = 'C' THEN fm.montant  -- Crédit (positif)
-                            WHEN dtm.code = 'D' THEN -fm.montant -- Débit (négatif)
-                            ELSE 0
-                        END
-                    ), 0)
-                    INTO mouvements_jour
-                    FROM FaitMouvement fm
-                    JOIN DimTypeMouvement dtm ON fm.idTypeMouvement = dtm.idTypeMouvement
-                    WHERE fm.idCompte = id_compte AND fm.idTemps = id_temps_courant;
-
-                    -- Insertion du solde du jour
-                    INSERT INTO FaitSoldeCompte(idTemps, idCompte, montantSolde)
-                    VALUES (id_temps_courant, id_compte, solde_prec + mouvements_jour);
-
-                    SET date_courante = DATE_ADD(date_courante, INTERVAL 1 DAY);
-                END WHILE;
-            END LOOP;
-
-            CLOSE curseur_comptes;
-        END
-      `);
-
-      // Call the stored procedure (optional)
-      await this.targetConnection.query(`CALL calculer_soldes_journaliers()`);
-
-      console.log("✅ Processed facts and created stored procedure");
-
+      this.stats.processed.movements = movements.length;
+      console.log(
+        `✅ Processed ${movements.length} movement type dimension records\n`
+      );
     } catch (error) {
       console.error("❌ Error processing facts:", error);
       this.stats.errors.push(`FaitMouvement: ${error.message}`);
     }
   }
+
+  async processSoldeFaits() {
+    console.log("🔄 Processing balance facts table...");
+    const spinner = ora('Executing balance facts table (this may take a while)...').start();
+
+    try {
+      await this.targetConnection.query(`
+          CALL calculer_soldes_journaliers()
+      `);
+
+      let [balances] = await this.targetConnection.query(`
+          SELECT COUNT(*) AS count FROM FaitSoldeCompte
+      `);
+
+      spinner.succeed('Setting up balance step completed !');
+
+      this.stats.processed.balances = balances[0].count;
+    } catch (error) {
+      console.error("❌ Error processing facts:", error);
+      spinner.fail('Setting up balance step failed !');
+      this.stats.errors.push(`FaitMouvement: ${error.message}`);
+    }
+  }
+
   // Utility functions
   getDayOfWeek(dayNum) {
     const days = [
@@ -518,9 +470,8 @@ class ETL {
       await this.processDimCategorie();
       await this.processDimTypeMouvement();
 
-      // Process facts
-      // await this.processFaitMouvement();
-      await this.processFaits();
+      await this.processMouvementsFaits();
+      await this.processSoldeFaits();
 
       const endTime = Date.now();
       const duration = (endTime - startTime) / 1000;
@@ -538,7 +489,7 @@ class ETL {
   }
 
   printSummary() {
-    console.log("\n📊 ETL Summary:");
+    console.log("📊 ETL Summary:");
     console.log("================");
     console.log(`📅 Time dimension records: ${this.stats.processed.dates}`);
     console.log(
@@ -558,6 +509,7 @@ class ETL {
     );
     console.log(`💰 Movement fact records: ${this.stats.processed.movements}`);
     console.log(`💳 Balance fact records: ${this.stats.processed.balances}`);
+    console.log("================\n\n");
 
     if (this.stats.errors.length > 0) {
       console.log("\n⚠️ Errors encountered:");
