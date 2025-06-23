@@ -337,7 +337,7 @@ class ETL {
       // Alimente FaitMouvement
       const [movements] = await this.sourceConnection.query(`
           SELECT m.idMouvement, m.idCompte, m.dateMouvement, m
-          .montant, m.idTiers, m.idSousCategorie, m.typeMouvement
+          .montant, m.idTiers, m.idCategorie, m.idSousCategorie, m.typeMouvement
           FROM Mouvement AS m
           JOIN Compte AS c ON m.idCompte = c.idCompte
       `);
@@ -345,7 +345,7 @@ class ETL {
       if (movements.length > 0) {
         await this.targetConnection.query(
           `
-            INSERT IGNORE INTO FaitMouvement (idMouvement, idTemps, idCompte, montant, idTiers, idSousCategorie, idTypeMouvement)
+            INSERT IGNORE INTO FaitMouvement (idMouvement, idTemps, idCompte, montant, idTiers, idCategorie, idSousCategorie, idTypeMouvement)
             VALUES ?
           `,
           [
@@ -364,6 +364,7 @@ class ETL {
                 movement.idCompte,
                 movement.montant,
                 movement.idTiers,
+                movement.idCategorie,
                 movement.idSousCategorie,
                 idTypeMouvement,
               ];
