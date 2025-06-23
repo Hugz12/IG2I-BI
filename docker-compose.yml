@@ -14,15 +14,6 @@ services:
     volumes:
       - ./db_data:/var/lib/mysql
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=traefik-network"
-      - "traefik.http.routers.api-db.rule=Host(`$${DOMAIN_NAME}`) && PathPrefix(`/api-db`)"
-      - "traefik.http.routers.api-db.entrypoints=websecure"
-      - "traefik.http.routers.api-db.tls.certresolver=myresolver"
-      - "traefik.http.services.api-db.loadbalancer.server.port=3306"
-    networks:
-      - traefik-network
 
   data-db:
     image: mysql:latest
@@ -37,15 +28,6 @@ services:
     volumes:
       - ./db_files:/var/lib/mysql
       - ./init-db-data.sql:/docker-entrypoint-initdb.d/init-db.sql
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=traefik-network"
-      - "traefik.http.routers.data-db.rule=Host(`$${DOMAIN_NAME}`) && PathPrefix(`/data-db`)"
-      - "traefik.http.routers.data-db.entrypoints=websecure"
-      - "traefik.http.routers.data-db.tls.certresolver=myresolver"
-      - "traefik.http.services.data-db.loadbalancer.server.port=3306"
-    networks:
-      - traefik-network
 
   db-filler:
     build: .
