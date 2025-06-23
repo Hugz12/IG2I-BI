@@ -49,13 +49,11 @@ class ETL {
 
   async connectToSources() {
     try {
-      console.log("🔄 Connecting to source database...");
       this.sourceConnection = await mysql.createConnection(sourceDbConfig);
       console.log("✅ Connected to source database");
 
-      console.log("🔄 Connecting to target database...");
       this.targetConnection = await mysql.createConnection(targetDbConfig);
-      console.log("✅ Connected to target database");
+      console.log("✅ Connected to target database\n");
     } catch (error) {
       console.error("❌ Error connecting to databases:", error);
       throw error;
